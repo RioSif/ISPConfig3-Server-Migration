@@ -53,7 +53,7 @@ function setup_ssh_keys {
         echo "⚠ SSH key connection failed. Attempting to copy key to remote server..."
         echo "Please enter the root password for the remote server:"
         read -s ssh_setup_password
-        echo $ssh_setup_password
+        echo ""
         
         if [[ -z "$ssh_setup_password" ]]; then
             echo "Password empty. Skipping SSH key copy."
@@ -61,25 +61,31 @@ function setup_ssh_keys {
             cat "$SSH_KEY.pub"
             echo ""
         else
-            # Use sshpass if available, otherwise try direct ssh-copy-id
-            if command -v sshpass >/dev/null 2>&1; then
-                echo "Using sshpass to copy key..."
-                SSHPASS="$ssh_setup_password" sshpass -e ssh-copy-id -i "$SSH_KEY.pub" -o StrictHostKeyChecking=accept-new "root@$main_server" 2>/dev/null
-            else
-                # Try direct approach with ssh-copy-id
-                echo "Trying direct approach with ssh-copy-id"
-                ssh-copy-id -i "$SSH_KEY.pub" -o StrictHostKeyChecking=accept-new "root@$main_server" 2>/dev/null || {
-                    echo "ssh-copy-id failed. Installing sshpass and retrying..."
-                    apt-get update && apt-get install -y sshpass
-                    SSHPASS="$ssh_setup_password" sshpass -e ssh-copy-id -i "$SSH_KEY.pub" -o StrictHostKeyChecking=accept-new "root@$main_server" 2>/dev/null
-                }
+            # Ensure sshpass is installed
+            if ! command -v sshpass >/dev/null 2>&1; then
+                echo "Installing sshpass for secure password handling..."
+                apt-get update >/dev/null 2>&1 && apt-get install -y sshpass >/dev/null 2>&1
             fi
-            echo "✓ SSH public key copied to remote server"
-            echo ""
             
-            # Test again after copying
-            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$main_server" "echo Test connection successful" 2>/dev/null; then
-                echo "✓ SSH key authentication is now working!"
+            # Use sshpass for non-interactive password authentication
+            if command -v sshpass >/dev/null 2>&1; then
+                echo "Copying SSH public key to remote server..."
+                SSHPASS="$ssh_setup_password" sshpass -e ssh-copy-id -i "$SSH_KEY.pub" -o StrictHostKeyChecking=accept-new "root@$main_server" >/dev/null 2>&1
+                echo "✓ SSH public key copied to remote server"
+                echo ""
+                
+                # Test again after copying
+                if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$main_server" "echo Test connection successful" 2>/dev/null; then
+                    echo "✓ SSH key authentication is now working!"
+                    echo ""
+                else
+                    echo "⚠ SSH key test connection failed. Check your credentials and try again."
+                    echo ""
+                fi
+            else
+                echo "Error: Could not install sshpass. Please install it manually."
+                echo "You can copy the key manually with:"
+                echo "ssh-copy-id -i $SSH_KEY.pub root@$main_server"
                 echo ""
             fi
         fi
