@@ -70,16 +70,40 @@ function setup_ssh_keys {
             # Use sshpass for non-interactive password authentication
             if command -v sshpass >/dev/null 2>&1; then
                 echo "Copying SSH public key to remote server..."
-                SSHPASS="$ssh_setup_password" sshpass -e ssh-copy-id -i "$SSH_KEY.pub" -o StrictHostKeyChecking=accept-new "root@$main_server" >/dev/null 2>&1
-                echo "✓ SSH public key copied to remote server"
-                echo ""
+                # Create a temporary script to install the key
+                local temp_script=$(mktemp)
+                cat > "$temp_script" << 'INSTALL_KEY_EOF'
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+cat >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+INSTALL_KEY_EOF
                 
-                # Test again after copying
-                if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$main_server" "echo Test connection successful" 2>/dev/null; then
-                    echo "✓ SSH key authentication is now working!"
+                # Use sshpass with proper heredoc for key installation
+                if cat "$SSH_KEY.pub" | SSHPASS="$ssh_setup_password" sshpass -e ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -T "root@$main_server" bash < "$temp_script" 2>/dev/null; then
+                    rm -f "$temp_script"
+                    echo "✓ SSH public key copied to remote server"
                     echo ""
+                    
+                    # Test again after copying
+                    sleep 2
+                    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$main_server" "echo Test connection successful" 2>/dev/null; then
+                        echo "✓ SSH key authentication is now working!"
+                        echo ""
+                    else
+                        echo "⚠ SSH key test connection failed. Check your credentials and try again."
+                        echo ""
+                    fi
                 else
-                    echo "⚠ SSH key test connection failed. Check your credentials and try again."
+                    rm -f "$temp_script"
+                    echo "⚠ Failed to copy SSH key to remote server."
+                    echo "Please ensure:"
+                    echo "  1. The password is correct"
+                    echo "  2. SSH is running on the remote server"
+                    echo "  3. The remote server allows root login"
+                    echo ""
+                    echo "Manual alternative:"
+                    echo "ssh-copy-id -i $SSH_KEY.pub root@$main_server"
                     echo ""
                 fi
             else
