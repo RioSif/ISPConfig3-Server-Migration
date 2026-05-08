@@ -53,7 +53,7 @@ function setup_ssh_keys {
         echo "⚠ SSH key connection failed. Attempting to copy key to remote server..."
         echo "Please enter the root password for the remote server:"
         read -s ssh_setup_password
-        echo ""
+        echo $ssh_setup_password
         
         if [[ -z "$ssh_setup_password" ]]; then
             echo "Password empty. Skipping SSH key copy."
@@ -67,6 +67,7 @@ function setup_ssh_keys {
                 SSHPASS="$ssh_setup_password" sshpass -e ssh-copy-id -i "$SSH_KEY.pub" -o StrictHostKeyChecking=accept-new "root@$main_server" 2>/dev/null
             else
                 # Try direct approach with ssh-copy-id
+                echo "Trying direct approach with ssh-copy-id"
                 ssh-copy-id -i "$SSH_KEY.pub" -o StrictHostKeyChecking=accept-new "root@$main_server" 2>/dev/null || {
                     echo "ssh-copy-id failed. Installing sshpass and retrying..."
                     apt-get update && apt-get install -y sshpass
